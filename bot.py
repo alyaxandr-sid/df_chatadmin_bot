@@ -7,6 +7,7 @@ from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import ChatMemberUpdatedFilter, IS_MEMBER, IS_NOT_MEMBER
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
+from aiohttp import web
 
 load_dotenv()
 
@@ -18,6 +19,18 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
 
+async def handle_ping(request):
+    return web.Response(text="Bot is running!")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle_ping)
+    app.router.add_get("/health", handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.getenv("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
 
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
@@ -61,8 +74,7 @@ async def check_presentation(message: types.Message):
                 await db.execute("DELETE FROM pending_users WHERE user_id = ?", (message.from_user.id,))
                 await db.commit()
 
-
-#если молчит-отправка в должники через minutes=n
+#если молчит-отправка в должники через minutes=n 
 async def daily_check():
     async with aiosqlite.connect(DB_NAME) as db:
         yesterday = (datetime.datetime.now() - datetime.timedelta(minutes=1440)).isoformat()
@@ -90,10 +102,10 @@ async def daily_check():
     )
     await bot.send_message(chat_id=CHAT_ID, text=remind_text, parse_mode="HTML")
 
-
 #напоминание должникам каждые minutes=n после деплоя
 async def main():
     await init_db()
+    await start_web_server()
     scheduler.add_job(daily_check, "interval", minutes=1440)
     scheduler.start()
     await dp.start_polling(bot)
