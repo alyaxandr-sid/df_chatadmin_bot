@@ -57,7 +57,7 @@ async def on_user_join(event: types.ChatMemberUpdated):
     mention = f"@{user.username}" if user.username else f"<a href='tg://user?id={user.id}'>{user.full_name}</a>"
     welcome_text = (
         f"📌 Добро пожаловать в чат! \n"
-        f"⚠️ {mention}, НАПИШИ СВОЕ РЫБЬЕ ИМЯ/ФИО+направление ⚠️\n\n"
+        f"⚠️ {mention}, НАПИШИ СВОЕ РЫБЬЕ ИМЯ/ФИО + направление ⚠️\n\n"
         f"Оставаясь здесь, ты принимаешь Правила чата: https://t.me/c/1897775186/18\n"
         f"________________________"
     )
