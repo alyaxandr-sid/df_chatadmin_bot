@@ -43,9 +43,7 @@ async def on_user_join(event: types.ChatMemberUpdated):
 
 @dp.message(F.chat.id == CHAT_ID)
 async def check_presentation(message: types.Message):
-
-    if message.text and any(tag in message.text.lower() for tag in ["#знакомство", "#визитка", "меня зовут"]):
-    
+    if message.text and any(tag in message.text.lower() for tag in ["#знакомство", "#визитка", "меня зовут"]):    
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("DELETE FROM pending_users WHERE user_id = ?", (message.from_user.id,))
         await db.commit()
