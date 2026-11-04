@@ -7,7 +7,7 @@ from aiogram.filters import ChatMemberUpdatedFilter, IS_MEMBER, IS_NOT_MEMBER
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 BOT_TOKEN = "9139034146:AAGLJZxPRFCrn0LJjc__0kzKczD8geQ4ih4"
-CHAT_ID = -952749601  # ID вашего чата
+CHAT_ID = -1001234567890  # ID вашего чата
 DB_NAME = "users.db"
 
 bot = Bot(token=BOT_TOKEN)
@@ -37,18 +37,16 @@ async def on_user_join(event: types.ChatMemberUpdated):
     
     welcome_text = (
         f"Привет, <a href='tg://user?id={user.id}'>{user.full_name}</a>!\n"
-        f"НАПИШИ СВОЕ РЫБЬЕ ИМЯ / ФИО + направление\n"
-        "Оставаясь здесь, ты принимаешь Правила чата:﻿ https://t.me/c/1897775186/18."
+        "Добро пожаловать в чат. Пожалуйста, представься (расскажи немного о себе)."
     )
     await bot.send_message(chat_id=event.chat.id, text=welcome_text, parse_mode="HTML")
 
-# При любом первом сообщении (или по ключевым словам) удаляем пользователя из таблицы
 @dp.message(F.chat.id == CHAT_ID)
 async def check_presentation(message: types.Message):
-    if message.text and any(tag in message.text.lower() for tag in ["Я ", "меня зовут"]):
+
+    if message.text and any(tag in message.text.lower() for tag in ["#знакомство", "#визитка", "меня зовут"]):
     
     async with aiosqlite.connect(DB_NAME) as db:
-        # Удаляем запись — история не хранится
         await db.execute("DELETE FROM pending_users WHERE user_id = ?", (message.from_user.id,))
         await db.commit()
 
@@ -73,7 +71,7 @@ async def daily_check():
 
     remind_text = (
         "Напоминание!\n" + ", ".join(tags) +
-        "\nВы еще не представились. Пожалуйста, НАПИШИ СВОЕ РЫБЬЕ ИМЯ / ФИО + направление"
+        "\nВы еще не представились. Пожалуйста, напишите пару слов о себе!"
     )
     await bot.send_message(chat_id=CHAT_ID, text=remind_text, parse_mode="HTML")
 
