@@ -1,3 +1,5 @@
 aiogram
 aiosqlite
 apscheduler
+python-dotenv
+aiohttp
