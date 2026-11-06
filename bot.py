@@ -110,35 +110,52 @@ async def log_current_pending_users():
         async with db.execute("SELECT user_id, username, full_name, joined_at FROM pending_users") as cursor:
             users = await cursor.fetchall()
             
-    if not users:
-        logging.info("--- В базе нет пользователей, ожидающих представления ---")
+    total_users = len(users)
+    
+    if total_users == 0:
+        logging.info("--- База пуста: всего пользователей в очереди: 0 ---")
         return
 
     now = datetime.datetime.now()
     yesterday = now - datetime.timedelta(days=1)
     
-    logging.info(f"---  Всего записей в базе: {len(users)} ---")
+    debtors_count = 0
+    fresh_count = 0
     
     for u_id, username, full_name, joined_at_str in users:
         joined_at = datetime.datetime.fromisoformat(joined_at_str)
         if joined_at <= yesterday:
+            debtors_count += 1
             status = "ДОЛЖНИК (прошло > 24ч)"
         else:
+            fresh_count += 1
             time_left = datetime.timedelta(days=1) - (now - joined_at)
             hours_left = round(time_left.total_seconds() / 3600, 1)
-            status = f"Свежий (осталось ~{hours_left} ч)"
+            status = f"Новый (осталось ~{hours_left} ч)"
 
         logging.info(f"  > ID: {u_id} | Name: {full_name} (@{username}) | Встал в очередь: {joined_at_str} | Статус: {status}")
+
+    job = scheduler.get_job('daily_check_job')
+    if job and job.next_run_time:
+        next_run = job.next_run_time.replace(tzinfo=None)
+        time_to_next = next_run - now
+        hours_to_next = round(max(0, time_to_next.total_seconds()) / 3600, 1)
+        next_run_str = f"~{hours_to_next} ч"
+    else:
+        next_run_str = "не запланировано"
+
+    logging.info(f"--- [СВОДКА] Всего в базе: {total_users} | Должников (>24ч): {debtors_count} | Ожидают (<24ч): {fresh_count} | Следующая рассылка через: {next_run_str} ---")
+    
 
 
 #напоминание должникам каждые minutes=n после деплоя
 async def main():
     await init_db()
-    await log_current_pending_users()
     await start_web_server()
-    scheduler.add_job(daily_check, "interval", minutes=480)
-    scheduler.add_job(log_current_pending_users, "interval", hours=6)
-    scheduler.start()
+    scheduler.add_job(daily_check, "interval", minutes=480, id="daily_check_job")
+    scheduler.add_job(log_current_pending_users, "interval", hours=1)
+    scheduler.start()    
+    await log_current_pending_users()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
