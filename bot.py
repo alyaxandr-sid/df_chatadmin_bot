@@ -106,7 +106,7 @@ async def daily_check():
 async def main():
     await init_db()
     await start_web_server()
-    scheduler.add_job(daily_check, "interval", minutes=1440)
+    scheduler.add_job(daily_check, "interval", minutes=480)
     scheduler.start()
     await dp.start_polling(bot)
 
