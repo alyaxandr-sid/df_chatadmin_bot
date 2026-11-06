@@ -85,7 +85,7 @@ async def check_presentation(message: types.Message):
 async def daily_check():
     logging.info("Запуск проверки должников...")
     async with aiosqlite.connect(DB_NAME) as db:
-        yesterday = (datetime.datetime.now() - datetime.timedelta(minutes=2)).isoformat()
+        yesterday = (datetime.datetime.now() - datetime.timedelta(minutes=5)).isoformat()
         async with db.execute(
             "SELECT user_id, username, full_name FROM pending_users WHERE joined_at <= ?",
             (yesterday,)
