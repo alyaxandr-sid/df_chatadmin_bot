@@ -76,6 +76,7 @@ async def check_presentation(message: types.Message):
 
 #если молчит-отправка в должники через minutes=n 
 async def daily_check():
+    logging.info("Запуск ежедневной проверки должников...")
     async with aiosqlite.connect(DB_NAME) as db:
         yesterday = (datetime.datetime.now() - datetime.timedelta(minutes=1440)).isoformat()
         async with db.execute(
@@ -84,6 +85,7 @@ async def daily_check():
         ) as cursor:
             users_to_remind = await cursor.fetchall()
 
+    logging.info(f"Найдено должников для напоминания: {len(users_to_remind)}")
     if not users_to_remind:
         return
 
@@ -102,11 +104,40 @@ async def daily_check():
     )
     await bot.send_message(chat_id=CHAT_ID, text=remind_text, parse_mode="HTML")
 
+
+async def log_current_pending_users():
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT user_id, username, full_name, joined_at FROM pending_users") as cursor:
+            users = await cursor.fetchall()
+            
+    if not users:
+        logging.info("--- В базе нет пользователей, ожидающих представления ---")
+        return
+
+    now = datetime.datetime.now()
+    yesterday = now - datetime.timedelta(days=1)
+    
+    logging.info(f"---  Всего записей в базе: {len(users)} ---")
+    
+    for u_id, username, full_name, joined_at_str in users:
+        joined_at = datetime.datetime.fromisoformat(joined_at_str)
+        if joined_at <= yesterday:
+            status = "ДОЛЖНИК (прошло > 24ч)"
+        else:
+            time_left = datetime.timedelta(days=1) - (now - joined_at)
+            hours_left = round(time_left.total_seconds() / 3600, 1)
+            status = f"Свежий (осталось ~{hours_left} ч)"
+
+        logging.info(f"  > ID: {u_id} | Name: {full_name} (@{username}) | Встал в очередь: {joined_at_str} | Статус: {status}")
+
+
 #напоминание должникам каждые minutes=n после деплоя
 async def main():
     await init_db()
+    await log_current_pending_users()
     await start_web_server()
     scheduler.add_job(daily_check, "interval", minutes=480)
+    scheduler.add_job(log_current_pending_users, "interval", hours=6)
     scheduler.start()
     await dp.start_polling(bot)
 
