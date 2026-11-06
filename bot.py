@@ -14,6 +14,7 @@ logging.basicConfig(
     level=logging.INFO,
     stream=sys.stdout,
     format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 load_dotenv()
 
