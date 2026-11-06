@@ -85,7 +85,7 @@ async def check_presentation(message: types.Message):
 async def daily_check():
     logging.info("Запуск проверки должников...")
     async with aiosqlite.connect(DB_NAME) as db:
-        yesterday = (datetime.datetime.now() - datetime.timedelta(minutes=5)).isoformat()
+        yesterday = (datetime.datetime.now() - datetime.timedelta(minutes=1400)).isoformat()
         async with db.execute(
             "SELECT user_id, username, full_name FROM pending_users WHERE joined_at <= ?",
             (yesterday,)
@@ -160,7 +160,7 @@ async def main():
     await init_db()
     await start_web_server()
     #напоминание должникам каждые minutes=n после деплоя
-    scheduler.add_job(daily_check, "interval", minutes=2, id="daily_check_job")
+    scheduler.add_job(daily_check, "interval", minutes=720, id="daily_check_job")
     #логи на чтение базы
     scheduler.add_job(log_current_pending_users, "interval", minutes=10)
     scheduler.start()    
