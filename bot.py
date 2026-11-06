@@ -1,6 +1,7 @@
+import logging
+import sys
 import asyncio
 import datetime
-import logging
 import os
 import aiosqlite
 from aiogram import Bot, Dispatcher, F, types
@@ -8,6 +9,11 @@ from aiogram.filters import ChatMemberUpdatedFilter, IS_MEMBER, IS_NOT_MEMBER
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
 from aiohttp import web
+
+logging.basicConfig(
+    level=logging.INFO,
+    stream=sys.stdout,
+    format="%(asctime)s - %(levelname)s - %(message)s"
 
 load_dotenv()
 
@@ -76,7 +82,7 @@ async def check_presentation(message: types.Message):
 
 #если молчит-отправка в должники через minutes=n 
 async def daily_check():
-    logging.info("Запуск ежедневной проверки должников...")
+    logging.info("Запуск проверки должников...")
     async with aiosqlite.connect(DB_NAME) as db:
         yesterday = (datetime.datetime.now() - datetime.timedelta(minutes=2)).isoformat()
         async with db.execute(
@@ -148,12 +154,14 @@ async def log_current_pending_users():
     
 
 
-#напоминание должникам каждые minutes=n после деплоя
+
 async def main():
     await init_db()
     await start_web_server()
+    #напоминание должникам каждые minutes=n после деплоя
     scheduler.add_job(daily_check, "interval", minutes=2, id="daily_check_job")
-    scheduler.add_job(log_current_pending_users, "interval", hours=1)
+    #логи на чтение базы
+    scheduler.add_job(log_current_pending_users, "interval", minutes=10)
     scheduler.start()    
     await log_current_pending_users()
     await dp.start_polling(bot)
