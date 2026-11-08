@@ -5,7 +5,7 @@ import datetime
 import os
 import aiosqlite
 from aiogram import Bot, Dispatcher, F, types
-from aiogram.filters import ChatMemberUpdatedFilter, IS_MEMBER, IS_NOT_MEMBER
+from aiogram.filters import ChatMemberUpdatedFilter, IS_MEMBER, IS_NOT_MEMBER, Command
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
 from aiohttp import web
@@ -78,7 +78,7 @@ async def on_user_join(event: types.ChatMemberUpdated):
 
 @dp.message(F.chat.id == CHAT_ID)
 async def check_presentation(message: types.Message):
-    if message.message_thread_id != TOPIC_ID:
+    if TOPIC_ID and message.message_thread_id and message.message_thread_id != TOPIC_ID:
         return
         
     if message.text:
@@ -90,11 +90,83 @@ async def check_presentation(message: types.Message):
                 await db.execute("DELETE FROM pending_users WHERE user_id = ?", (message.from_user.id,))
                 await db.commit()
 
-#если молчит-отправка в должники через minutes=n 
-async def daily_check():
-    logging.info("Запуск проверки должников...")
+# Команда вывода статистики (работает только в личных сообщениях с ботом)
+@dp.message(Command("stats"))
+async def cmd_stats(message: types.Message):
+    if message.chat.type != "private":
+        return
+
     async with aiosqlite.connect(DB_NAME) as db:
-        yesterday = (datetime.datetime.now() - datetime.timedelta(minutes=1400)).isoformat()
+        async with db.execute("SELECT user_id, username, full_name, joined_at FROM pending_users") as cursor:
+            users = await cursor.fetchall()
+            
+    total_users = len(users)
+    now = datetime.datetime.now()
+
+    job = scheduler.get_job('daily_check_job')
+    if job and job.next_run_time:
+        next_run = job.next_run_time.replace(tzinfo=None)
+        time_to_next = next_run - now
+        total_seconds = max(0, time_to_next.total_seconds())
+        hours_to_next = int(total_seconds // 3600)
+        minutes_to_next = int((total_seconds % 3600) // 60)
+        next_run_str = f"~{hours_to_next} ч {minutes_to_next} мин"
+    else:
+        next_run_str = "не запланировано"
+
+    if total_users == 0:
+        text = (
+            f"📊 База пуста\n\n"
+            f"- Всего: 0\n"
+            f"- Новые (&lt;24ч): 0\n"
+            f"- Должники (&gt;24ч): 0\n\n"
+            f"- Следующая рассылка через: {next_run_str}\n\n"
+        )
+        await message.answer(text, parse_mode="HTML")
+        return
+
+########## статистика: поиск должников (прошло больше minutes=n )
+    yesterday = now - datetime.timedelta(minutes=1400) 
+    
+    debtors_count = 0
+    fresh_count = 0
+    details = []
+
+    for u_id, username, full_name, joined_at_str in users:
+        joined_at = datetime.datetime.fromisoformat(joined_at_str)
+        joined_date_fmt = joined_at.strftime("%d.%m.%y %H:%M")     
+        uname_str = f"@{username}" if username else "без username"
+        user_link = f"tg://user?id={u_id}"
+
+        if joined_at <= yesterday:
+            debtors_count += 1
+            status = f"Должник -- зашел [{joined_date_fmt}]"
+        else:
+            fresh_count += 1
+########## статистика: осталось до попадания в должники (прошло больше minutes=n)   
+            time_left = datetime.timedelta(minutes=1400) - (now - joined_at)
+            hours_left = round(time_left.total_seconds() / 3600, 1)
+            status = f"Новый -- зашел [{joined_date_fmt}] (осталось ~{hours_left} ч)"
+        
+        details.append(f"- {full_name} - {uname_str} - {user_link} — {status}")
+
+    text = (
+        f"📊 Статистика\n\n"
+        f"- Всего: {total_users}\n"
+        f"- Новые (&lt;24ч): {fresh_count}\n"
+        f"- Должники (&gt;24ч): {debtors_count}\n\n"
+        f"- Следующая рассылка через: {next_run_str}\n\n"
+        f"Список:\n" + "\n".join(details)
+    )
+    
+    await message.answer(text, parse_mode="HTML")
+
+
+async def daily_check():
+    logging.info("Запуск поиска должников...")
+    async with aiosqlite.connect(DB_NAME) as db:
+########## определение должников (прошло больше minutes=n )
+        yesterday = (datetime.datetime.now() - datetime.timedelta(minutes=1400)).isoformat() 
         async with db.execute(
             "SELECT user_id, username, full_name FROM pending_users WHERE joined_at <= ?",
             (yesterday,)
@@ -118,12 +190,15 @@ async def daily_check():
         f"⚠️НАПИШИ СВОЕ РЫБЬЕ ИМЯ/ФИО + направление ⚠️\n"
         f"________________________"
     )
-    await bot.send_message(
-    chat_id=CHAT_ID, 
-    text=remind_text, 
-    parse_mode="HTML",
-    message_thread_id=TOPIC_ID
-)
+    
+    try:
+        await bot.send_message(
+            chat_id=CHAT_ID, 
+            text=remind_text, 
+            parse_mode="HTML"
+        )
+    except Exception as err:
+        logging.error(f"Не удалось отправить напоминание вообще: {err}")
 
 
 async def log_current_pending_users():
@@ -138,7 +213,8 @@ async def log_current_pending_users():
         return
 
     now = datetime.datetime.now()
-    yesterday = now - datetime.timedelta(days=1)
+########## логи: поиск должников (прошло больше minutes=n )
+    yesterday = now - datetime.timedelta(minutes=1400) 
     
     debtors_count = 0
     fresh_count = 0
@@ -150,11 +226,11 @@ async def log_current_pending_users():
             status = "ДОЛЖНИК (прошло > 24ч)"
         else:
             fresh_count += 1
-            time_left = datetime.timedelta(days=1) - (now - joined_at)
+            time_left = datetime.timedelta(minutes=1400) - (now - joined_at)
             hours_left = round(time_left.total_seconds() / 3600, 1)
             status = f"Новый (осталось ~{hours_left} ч)"
 
-        logging.info(f"  > ID: {u_id} | Name: {full_name} (@{username}) | Встал в очередь: {joined_at_str} | Статус: {status}")
+        logging.info(f"  > ID: {u_id} | Name: {full_name} (@{username}) | Встал в очередь: {joined_at_str} | Status: {status}")
 
     job = scheduler.get_job('daily_check_job')
     if job and job.next_run_time:
@@ -169,18 +245,16 @@ async def log_current_pending_users():
     
 
 
-
 async def main():
     await init_db()
     await start_web_server()
-    #напоминание должникам каждые minutes=n после деплоя
-    scheduler.add_job(daily_check, "interval", minutes=720, id="daily_check_job")
-    #логи на чтение базы
-    scheduler.add_job(log_current_pending_users, "interval", minutes=10)
+########## запуск напоминания должникам каждые minutes=n после деплоя 
+    scheduler.add_job(daily_check, "interval", minutes=800, id="daily_check_job")
+    #логи на чтение базы 
+    scheduler.add_job(log_current_pending_users, "interval", minutes=360)
     scheduler.start()    
     await log_current_pending_users()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
