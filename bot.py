@@ -20,6 +20,7 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = int(os.getenv("CHAT_ID"))
+TOPIC_ID = int(os.getenv("TOPIC_ID", 1))
 DB_NAME = "users.db"
 
 bot = Bot(token=BOT_TOKEN)
@@ -68,13 +69,21 @@ async def on_user_join(event: types.ChatMemberUpdated):
         f"Оставаясь здесь, ты принимаешь Правила чата: https://t.me/c/1897775186/18\n"
         f"________________________"
     )
-    await bot.send_message(chat_id=event.chat.id, text=welcome_text, parse_mode="HTML")
+    await bot.send_message(
+    chat_id=event.chat.id, 
+    text=welcome_text, 
+    parse_mode="HTML",
+    message_thread_id=getattr(event, "message_thread_id", None)
+    )
 
-@dp.message(F.chat.id == CHAT_ID)
+@dp.message(F.chat.id == CHT_ID if isinstance(CHAT_ID, int) else F.chat.id == int(CHAT_ID))
 async def check_presentation(message: types.Message):
+    if message.message_thread_id != TOPIC_ID:
+        return
+        
     if message.text:
         text_lower = message.text.lower()
-        keywords = ["привет", "всем", "меня", "зовут", "имя", "танцую", "хожу", "линди", "блюз" ]
+        keywords = ["привет", "всем", "меня", "зовут", "имя", "танцую", "хожу", "линди", "блюз"]
         
         if any(kw in text_lower for kw in keywords):
             async with aiosqlite.connect(DB_NAME) as db:
@@ -109,7 +118,12 @@ async def daily_check():
         f"⚠️НАПИШИ СВОЕ РЫБЬЕ ИМЯ/ФИО + направление ⚠️\n"
         f"________________________"
     )
-    await bot.send_message(chat_id=CHAT_ID, text=remind_text, parse_mode="HTML")
+    await bot.send_message(
+    chat_id=CHAT_ID, 
+    text=remind_text, 
+    parse_mode="HTML",
+    message_thread_id=TOPIC_ID
+)
 
 
 async def log_current_pending_users():
