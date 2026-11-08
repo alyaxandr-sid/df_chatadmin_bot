@@ -19,7 +19,7 @@ logging.basicConfig(
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = int(os.getenv("CHAT_ID"))
+CHAT_ID = int(os.getenv("CHAT_ID", 0))
 TOPIC_ID = int(os.getenv("TOPIC_ID", 1))
 DB_NAME = "users.db"
 
@@ -76,7 +76,7 @@ async def on_user_join(event: types.ChatMemberUpdated):
     message_thread_id=getattr(event, "message_thread_id", None)
     )
 
-@dp.message(F.chat.id == CHAT_ID if isinstance(CHAT_ID, int) else F.chat.id == int(CHAT_ID))
+@dp.message(F.chat.id == CHAT_ID)
 async def check_presentation(message: types.Message):
     if message.message_thread_id != TOPIC_ID:
         return
